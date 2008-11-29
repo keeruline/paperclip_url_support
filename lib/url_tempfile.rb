@@ -1,7 +1,5 @@
-require 'mime/types'
 require 'openssl'
-require 'open-uri'
-
+require 'tempfile'
 
 # This class provides a Paperclip plugin compliant interface for an "upload" file
 # where that uploaded file is actually coming from a URL.  This class will download
@@ -10,6 +8,8 @@ require 'open-uri'
 # Paperclip just as a regular uploaded file would.
 #
 class URLTempfile < Tempfile
+  BUFFER_SIZE = 1024
+  
   attr :content_type
   
   def initialize(url)
@@ -18,28 +18,28 @@ class URLTempfile < Tempfile
     # see if we can get a filename
     raise "Unable to determine filename for URL uploaded file." unless original_filename
 
-    begin
-      # HACK to get around inability to set VERIFY_NONE with open-uri
-      old_verify_peer_value = OpenSSL::SSL::VERIFY_PEER
-      OpenSSL::SSL.const_set("VERIFY_PEER", OpenSSL::SSL::VERIFY_NONE)
-      
-      super('urlupload')
-      Kernel.open(url) do |file|
-        @content_type = file.content_type
-        raise "Unable to determine MIME type for URL uploaded file." unless content_type
-      
-        self.write file.read
-        self.flush
+    super('urlupload')
+  
+    http(@url).request_get(@url.request_uri) do |res|
+      res.read_body do |segment|
+        self.write(segment)
       end
-    ensure
-      OpenSSL::SSL.const_set("VERIFY_PEER", old_verify_peer_value)
     end
+    
+    self.flush
   end
   
   def original_filename
     # Take the URI path and strip off everything after last slash, assume this
     # to be filename (URI path already removes any query string)
-    match = @url.path.match(/^.*\/(.+)$/)
-    return (match ? match[1] : nil)
+    @url.path[/^.*\/(.+)$/, 1]
+  end
+  
+  private
+  def http(uri) #:nodoc:
+    http = Net::HTTP.new(uri.host, uri.port)
+    http.use_ssl = uri.is_a?(URI::HTTPS)
+    http.verify_mode = OpenSSL::SSL::VERIFY_NONE
+    http
   end
 end
