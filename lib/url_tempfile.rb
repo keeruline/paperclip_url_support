@@ -25,7 +25,7 @@ class URLTempfile < Tempfile
         self.write(segment)
       end
 
-      self.content_type = res.content_type
+      @content_type = res.content_type
     end
     
     self.flush
