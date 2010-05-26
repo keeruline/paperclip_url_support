@@ -8,6 +8,15 @@ require 'tempfile'
 # Paperclip just as a regular uploaded file would.
 #
 class URLTempfile < Tempfile
+  class UnsuccessfulHTTPResponse < StandardError
+    attr_reader :http_response, :url
+
+    def initialize(url, http_response)
+      @url, @http_response = url, http_response
+      super("The request to #{url} was unsuccessful.  Response status: #{http_response.code}")
+    end
+  end
+
   BUFFER_SIZE = 1024
   
   attr :content_type
@@ -21,6 +30,8 @@ class URLTempfile < Tempfile
     super('urlupload')
   
     http(@url).request_get(@url.request_uri) do |res|
+      raise UnsuccessfulHTTPResponse.new(url, res) unless res.code.to_s =~ /^2\d\d$/
+
       res.read_body do |segment|
         self.write(segment)
       end
